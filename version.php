@@ -22,13 +22,13 @@
  * @package     local_definum
  */
 
-$plugin->version    = 2025043000;
+$plugin->version    = 2025043003;
 $plugin->requires   = 2012120300;
 $plugin->component  = 'local_definum';
 $plugin->maturity   = MATURITY_BETA;
-$plugin->release    = '4.1.0 (Build 2025043000)';
+$plugin->release    = '4.5.0 (Build 2025043003)';
 $plugin->supported = [401, 405];
 
 // Non moodle attributes.
-$plugin->codeincrement = '4.1.0001';
+$plugin->codeincrement = '4.5.0001';
 $plugin->privacy = 'public';
