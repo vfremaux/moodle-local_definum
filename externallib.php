@@ -67,13 +67,20 @@ class local_definum_external extends external_api {
             $user = $DB->get_record('user', ['username' => $oidcid->username], '*', MUST_EXIST);
         }
 
-        //
+        // Get firstday of current month.
+        $refdate = new DateTime('now');
+        list($year, $month) = explode('-', $refdate->format('Y-m'));
+        $refdate->setDate($year, $month, 1);
+        $refdate->setTime(0, 0, 0, 1);
+
         $stats = new StdClass;
         $stats->id = $user->id;
         $stats->lastname = $user->lastname;
         $stats->firstname = $user->firstname;
         $stats->lastlogin = $user->lastlogin;
         $stats->lastloginstr = core_date::strftime(get_string('datetimeformat'), $user->lastlogin);
+        $select = ' userid = :userid AND action = "loggedin" AND timecreated > :fromdate ';
+        $stats->loginsinmonth = $DB->count_records('logstore_standard_log', $select, ['userid' => $user->id, 'fromdate' => $refdate->getTimestamp()]);
 
         // Courses stats
         $courses = enrol_get_all_users_courses($user->id, true, 'id, shortname');
@@ -109,14 +116,8 @@ class local_definum_external extends external_api {
             $now = time();
             $input = new Stdclass;
 
-            // Get firstday of current month.
-            $now = new DateTime('now');
-            list($year, $month) = explode('-', $now->format('Y-m'));
-            $now->setDate($year, $month, 1);
-            $now->setTime(0, 0, 0, 1);
-
-            $input->from = $now->getTimestamp();
-            $input->to = $now; // now.
+            $input->from = $refdate->getTimestamp();
+            $input->to = time(); // now.
             $logs = use_stats_extract_logs($input->from, $input->to, $user->id, 0);
             $aggregate = use_stats_aggregate_logs($logs, $input->from, $input->to, '', false, $c);
             $elapsed = 0;
