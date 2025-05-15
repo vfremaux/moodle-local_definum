@@ -55,11 +55,17 @@ class local_definum_external extends external_api {
 
         $params = self::validate_parameters(self::get_stats_parameters(), ['useridfield' => $useridfield, 'userid' => $userid]);
 
-        if (!in_array($useridfield, ['id', 'username', 'idnumber', 'email'])) {
+        if (!in_array($useridfield, ['id', 'username', 'idnumber', 'email', 'oidcuniqueid', 'oidcusername'])) {
             throw new invalid_parameter_exception("Non supported user field");
         }
 
-        $user = $DB->get_record('user', [$useridfield => $userid], '*', MUST_EXIST);
+        if (! preg_match('/^oidc/', $useridfield)) {
+            // standard moodle field
+            $user = $DB->get_record('user', [$useridfield => $userid], '*', MUST_EXIST);
+        } else {
+            $oidcid = $DB->get_record('auth_oidc_token', [$useridfeld => $userid], '*', IGNORE_MULTIPLE);
+            $user = $DB->get_record('user', ['username' => $oidcid->username], '*', MUST_EXIST);
+        }
 
         //
         $stats = new StdClass;
