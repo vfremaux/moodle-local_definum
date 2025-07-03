@@ -36,7 +36,7 @@ $functions = [
 
 // We define the services to install as pre-build services. A pre-build service is not editable by administrator.
 $services = [
-    'extcpre' => [
+    'definum' => [
         'functions' => [
             'definum_get_stats',
         ],

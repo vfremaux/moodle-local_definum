@@ -18,12 +18,13 @@
  * Extended Core Web Services external web services
  *
  * @package     local_definum
- * @copyright   2020 onwards Valery fremaux <valery.fremaux@gmail.com>
+ * @author      2025 Valery fremaux <valery.fremaux@gmail.com>
+ * @copyright   2026 Valery fremaux
  * @license     http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 require_once($CFG->libdir.'/externallib.php');
-require_once($CFG->dirroot.'/lib/badgelib.php');
+require_once($CFG->dirroot.'/lib/badgeslib.php');
 
 /**
  * External Webservices for definum project API class
@@ -39,8 +40,8 @@ class local_definum_external extends external_api {
      */
     public static function get_stats_parameters() {
         return new external_function_parameters([
-            'useridfield' => new external_value(PARAM_ALPHAEXT, 'Field used for user identification'),
-            'userid' => new external_value(PARAM_TEXT, 'id of user', VALUE_OPTIONAL),
+            'useridfield' => new external_value(PARAM_ALPHA, 'Field used for user identification'),
+            'userid' => new external_value(PARAM_TEXT, 'id of user'),
         ]);
     }
 
@@ -73,19 +74,27 @@ class local_definum_external extends external_api {
         $refdate->setDate($year, $month, 1);
         $refdate->setTime(0, 0, 0, 1);
 
+        $format = get_string('strftimedaydatetime', 'langconfig');
+
         $stats = new StdClass;
         $stats->id = $user->id;
         $stats->lastname = $user->lastname;
         $stats->firstname = $user->firstname;
         $stats->lastlogin = $user->lastlogin;
-        $stats->lastloginstr = core_date::strftime(get_string('datetimeformat'), $user->lastlogin);
+        $stats->lastloginstr = core_date::strftime($format, (int) $user->lastlogin);
         $select = ' userid = :userid AND action = "loggedin" AND timecreated > :fromdate ';
-        $stats->loginsinmonth = $DB->count_records('logstore_standard_log', $select, ['userid' => $user->id, 'fromdate' => $refdate->getTimestamp()]);
+        $stats->loginsinmonth = $DB->count_records_select('logstore_standard_log', $select, ['userid' => $user->id, 'fromdate' => $refdate->getTimestamp()]);
 
         // Courses stats
-        $courses = enrol_get_all_users_courses($user->id, true, 'id, shortname');
+        $courses = enrol_get_all_users_courses($user->id, true, 'id, shortname,enablecompletion');
         $stats->courses = count($courses);
-        $stats->finishablecourses = $DB->count_records('course_completions', ['userid' => $user->id]);
+        $stats->finishablecourses = 0;
+        foreach ($courses as $c) {
+            if (!$c->enablecompletion) {
+                continue;
+            }
+            $stats->finishablecourses++;
+        }
         $select = ' userid = :userid AND timecompleted > 0 ';
         $stats->finishedcourses = $DB->count_records_select('course_completions', $select, ['userid' => $user->id]);
         if ($stats->finishablecourses) {
@@ -104,14 +113,16 @@ class local_definum_external extends external_api {
                 $badgeexport->issuername = $b->issuername;
                 $badgeexport->issuerurl = $b->issuerurl;
                 $badgeexport->dateissued = $b->dateissued;
-                $badgeexport->dateissuedstr = core_date::strftime(get_string('datetimeformat'), $b->dateissued);
+                $badgeexport->dateissuedstr = core_date::strftime($format, (int) $b->dateissued);
             }
+        } else {
+            $stats->badges = [];
         }
         $stats->numbadges = count($badges);
 
         // If we have use_stats installed.
         if (is_dir($CFG->dirroot.'/blocks/use_stats')) {
-            include $CFG->dirroot.'/blocks/use_stats/locallib.php';
+            include_once($CFG->dirroot.'/blocks/use_stats/locallib.php');
 
             $now = time();
             $input = new Stdclass;
@@ -119,16 +130,20 @@ class local_definum_external extends external_api {
             $input->from = $refdate->getTimestamp();
             $input->to = time(); // now.
             $logs = use_stats_extract_logs($input->from, $input->to, $user->id, 0);
-            $aggregate = use_stats_aggregate_logs($logs, $input->from, $input->to, '', false, $c);
-            $elapsed = 0;
-            if (!array_key_exists('coursetotal', $aggregate)) {
-                foreach ($aggregate['coursetotal'] as $c) {
-                    $elapsed += $c->elapsed;
+            if (!empty($logs)) {
+                $aggregate = use_stats_aggregate_logs($logs, $input->from, $input->to, '', false, null);
+                $elapsed = 0;
+                if (!array_key_exists('coursetotal', $aggregate)) {
+                    foreach ($aggregate['coursetotal'] as $c) {
+                        $elapsed += $c->elapsed;
+                    }
                 }
+                $stats->timespentinmonth = $elapsed;
+                $stats->timespentinmonthstr = block_use_stats_format_time($elapsed);
+            } else {
+                $stats->timespentinmonth = 0;
+                $stats->timespentinmonthstr = block_use_stats_format_time(0);
             }
-            $stats->timespentinmonth = $elapsed;
-            $stats->timespentinmonthstr = block_use_stats_format_time($elapsed);
-
         } else {
             $stats->timespentinmonth = -1;
             $stats->timespentinmonthstr = 'Not available';
@@ -143,7 +158,7 @@ class local_definum_external extends external_api {
      * @return external_description
      */
     public static function get_stats_returns() {
-        return external_single_structure([
+        return new external_single_structure([
                 'id' => new external_value(PARAM_INT, 'userid'),
                 'lastname' => new external_value(PARAM_TEXT, 'User last name'),
                 'firstname' => new external_value(PARAM_TEXT, 'User first name'),
@@ -152,7 +167,7 @@ class local_definum_external extends external_api {
                 'finishedcourses' => new external_value(PARAM_INT, 'Finished courses'),
                 'finishedcoursesratio' => new external_value(PARAM_INT, 'Finished courses in percent'),
                 'badges' => new external_multiple_structure(
-                    new external_single_sructure([
+                    new external_single_structure([
                         'id' => new external_value(PARAM_INT, 'Badge id'),
                         'name' => new external_value(PARAM_INT, 'Badge name'),
                         'issuername' => new external_value(PARAM_INT, 'Badge issuer name'),
